@@ -4,7 +4,9 @@ import smach
 class ascent(smach.State):
     def __init__(self):
         smach.State.__init__(self, 
-                outcomese=['init mapping', 'traversal to mining', 'traversal to berm', 'fail'])
+                outcomese=['init mapping', 'traversal', 'fail'],
+                input_keys=['behavior'],
+                output_keys=['behavior', 'target'])
                 
     
     def execute (self, behavior):
@@ -17,7 +19,9 @@ class ascent(smach.State):
 class init_mapping(smach.State):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['pass', 'fail'])
+                outcomes=['pass', 'fail'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # sping 360 & find april tag & set target
@@ -28,41 +32,30 @@ class init_mapping(smach.State):
             return 'pass'
         else:
             return 'fail'
-
-class traversal_to_mining(smach.State):
+        
+class traversal(smach.State):
     def __init__(self):
         smach.State.__inti__(self,
-                outcomes=['pass', 'fail'])
+                outcomes=['target reached', 'detect robot stuck'],
+                input_keys=['behavior&target'],
+                output_keys=['behavior'])
         
-    def execute (self, behavior):
+    def execute (self, behavior, target):
         # generate trajectory
 
         # move along trajectory + recieve sensor input(imu, uwb, images) + update map
 
         if True:
-            return 'pass'
+            return 'target reached'
         else:
-            return 'fail'
-        
-class traversal_to_berm(smach.State):
-    def __init__(self):
-        smach.State.__inti__(self,
-                outcomes=['target reached', 'detect robot stuck'])
-        
-    def execute (self, behavior):
-        # generate trajectory
-
-        # move along trajectory + recieve sensor input(imu, uwb, images) + update map
-
-        if True:
-            return 'pass'
-        else:
-            return 'fail'
+            return 'detect robot stuck'
         
 class plunging(smach.Sate):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['pass', 'fail'])
+                outcomes=['pass', 'fail'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # Set excavation to full speed + lower 90% of distance
@@ -77,7 +70,9 @@ class plunging(smach.Sate):
 class trenching(smach.Sate):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['load cell full', 'Obstacle reached', 'fail'])
+                outcomes=['load cell full', 'Obstacle reached', 'fail'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # drive forward + adjust speed
@@ -90,7 +85,9 @@ class trenching(smach.Sate):
 class deposit(smach.Sate):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['load cell empty', 'fail':'FUCKED'])
+                outcomes=['load cell empty', 'fail':'FUCKED'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # spin auger
@@ -105,7 +102,9 @@ class deposit(smach.Sate):
 class post_deposit(smach.Sate):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['pass', 'fail'])
+                outcomes=['pass', 'fail'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # shift future deposition location
@@ -118,7 +117,11 @@ class post_deposit(smach.Sate):
 class escape(smach.Sate):
     def __init__(self):
         smach.State.__init__(self,
-                outcomes=['back to traversal to mining', 'back to traversal to berm', 'detect robot stuck':'ESCAPE'])
+                outcomes=['back to traversal to mining',
+                          'back to traversal to berm',
+                          'detect robot stuck':'ESCAPE'],
+                input_keys=['behavior'],
+                output_keys=['behavior'])
     
     def execute (self, behavior):
         # drive stright at 100% speed
@@ -130,42 +133,62 @@ class escape(smach.Sate):
 
 
 def main():
-    rospy.init_node('smach_example_state_machine')
+    rospy.init_node('Lunabot behavior')
 
-    sm = smach.StateMachine(outcomes = ['PASS', 'FAIL'])
+    sm_top = smach.StateMachine(outcomes = ['PASS', 'FAIL'])
 
-    with sm:
+    with sm_top:
         smach.StateMachine.add('ASCENT', ascent(), 
-                               transitions={'init mapping':'INIT_MAPPING',
-                                            'traversal to mining':'TRAVERSAL_TO_MINING',
-                                            'traversal to berm':'TRAVERSAL_TO_BERM',
-                                             'fail':'FUCKED'})
+                                transitions={'init mapping':'INIT_MAPPING',
+                                             'traversal to mining':'TRAVERSAL',
+                                             'traversal to berm':'TRAVERSAL',
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior&target'})
+        
         smach.StateMachine.add('INIT_MAPPING', init_mapping(), 
-                               transitions={'pass':'TRAVERSAL_TO_MINING', 
-                                             'fail':'FUCKED'})
-        smach.StateMachine.add('TRAVERSAL_TO_MINING', traversal_to_mining(),
-                               transitions={'pass':'PLUGING',
-                                             'fail':'ESCAPE'})
+                                transitions={'pass':'TRAVERSAL', 
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
+        
+        smach.StateMachine.add('TRAVERSAL', traversal(),
+                                transitions={'target reached':'PLUGING',
+                                            'detect robot stuck':'ESCAPE'},
+                                remapping={'input_keys' : 'behavior&target',
+                                           'output_keys' : 'behavior'})
+        
         smach.StateMachine.add('PLUGING', plunging(), 
-                               transitions={'pass':'TRENCHING', 
-                                             'fail':'FUCKED'})
+                                transitions={'pass':'TRENCHING', 
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
+        
         smach.StateMachine.add('TRENCHING', trenching(), 
-                               transitions={'load cell full':'ASCENT',
-                                            'Obstacle reached':'ASCENT', 
-                                             'fail':'FUCKED'})
-        smach.StateMachine.add('TRAVERSAL_TO_BERM', traversal_to_berm(), 
-                               transitions={'target reached':'DEPOSIT', 
-                                            'detect robot stuck':'ESCAPE'})
+                                transitions={'load cell full':'ASCENT',
+                                             'Obstacle reached':'ASCENT', 
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
+        
         smach.StateMachine.add('DEPOSIT', deposit(), 
-                               transitions={'load cell empty':'POST_DEPOSIT', 
-                                            'fail':'FUCKED'})
+                                transitions={'load cell empty':'POST_DEPOSIT', 
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
+        
         smach.StateMachine.add('POST_DEPOSIT', post_deposit(), 
-                               transitions={'pass':'ASCENT', 
-                                            'fail':'FUCKED'})
+                                transitions={'pass':'ASCENT', 
+                                             'fail':'FUCKED'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
+        
         smach.StateMachine.add('ESCAPE', escape(), 
-                               transitions={'back to traversal to mining':'TRAVERSAL_TO_MINING',
-                                            'back to traversal to berm':'TRAVERSAL_TO_BERM', 
-                                            'detect robot stuck':'ESCAPE'})
+                                transitions={'back to traversal to mining':'TRAVERSAL_TO_MINING',
+                                             'back to traversal to berm':'TRAVERSAL_TO_BERM', 
+                                             'detect robot stuck':'ESCAPE'},
+                                remapping={'input_keys' : 'behavior',
+                                           'output_keys' : 'behavior'})
         
-        
+    outcome = sm_top.execute()
         
